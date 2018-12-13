@@ -336,15 +336,21 @@ zshz() {
       esac
     done
 
+    # zsystem flock-based solution by @mafredri
+
     # A temporary file that gets copied over the datafile if all goes well
     local tempfile="$(mktemp "${datafile}.XXXXXXXX")"
 
-    # Make sure tht the datafile exists for locking
-    [[ -f $datafile ]] || touch "$datafile"
-    local lockfd
+    if (( $ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
-    # Grab exclusive lock (released when function exits)
-    zsystem flock -f lockfd "$datafile" || return
+      # Make sure tht the datafile exists for locking
+      [[ -f $datafile ]] || touch "$datafile"
+      local lockfd
+
+      # Grab exclusive lock (released when function exits)
+      zsystem flock -f lockfd "$datafile" || return
+
+    fi
 
     _zshz_maintain_datafile "$*" >| "$tempfile"
 
