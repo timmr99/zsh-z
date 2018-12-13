@@ -328,10 +328,30 @@ zshz() {
       esac
     done
 
+    # zsystem flock-based solution by @mafredri
+
     # A temporary file that gets copied over the datafile if all goes well
-    local tempfile="$datafile.$RANDOM"
+    local tempfile="$(mktemp "${datafile}.XXXXXXXX")"
+
+    # Make sure tht the datafile exists for locking
+    [[ -f $datafile ]] || touch "$datafile"
+    local lockfd
+
+    # Grab exclusive lock (released when function exits)
+    zsystem flock -f lockfd "$datafile" || return
 
     _zshz_maintain_datafile "$*" >| "$tempfile"
+
+    local ret=$?
+
+    # Replace contents of datafile with tempfile
+    command cat "$tempfile" >| "$datafile"
+
+    if [[ ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
+      chown ${ZSHZ_OWNER:-${_Z_OWNER}}:$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}}) "$datafile"
+    fi
+
+    command rm -f "$tempfile"
 
     # Avoid clobbering the datafile in a race condition
     if (( $? != 0 )) && [[ -f $datafile ]]; then
