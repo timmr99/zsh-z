@@ -79,6 +79,14 @@ With no ARGUMENT, list the directory history in ascending rank.
 # of ZSH
 (( $+EPOCHSECONDS )) || zmodload zsh/datetime
 
+# Load zsh/system, if necessary
+whence -w zsystem &> /dev/null || zmodload zsh/system &> /dev/null
+
+# Determine whether zsystem flock is available
+if zsystem supports flock &> /dev/null; then
+  typeset -g ZSHZ_USE_ZSYSTEM_FLOCK=1
+fi
+
 ########################################################
 # Maintain the datafile
 #
@@ -328,8 +336,6 @@ zshz() {
       esac
     done
 
-    # zsystem flock-based solution by @mafredri
-
     # A temporary file that gets copied over the datafile if all goes well
     local tempfile="$(mktemp "${datafile}.XXXXXXXX")"
 
@@ -344,24 +350,28 @@ zshz() {
 
     local ret=$?
 
-    # Replace contents of datafile with tempfile
-    command cat "$tempfile" >| "$datafile"
+    if (( $ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
-    if [[ ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
-      chown ${ZSHZ_OWNER:-${_Z_OWNER}}:$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}}) "$datafile"
-    fi
-
-    command rm -f "$tempfile"
-
-    # Avoid clobbering the datafile in a race condition
-    if (( $? != 0 )) && [[ -f $datafile ]]; then
-      command rm -f "$tempfile"
-    else
-      if [[ -n ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
-        chown "${ZSHZ_OWNER:-${_Z_OWNER}}":"$(id -ng "${ZSHZ_OWNER:-${_Z_OWNER}}")" "$tempfile"
+      # Replace contents of datafile with tempfile
+      command cat "$tempfile" >| "$datafile"
+      if [[ ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
+        chown ${ZSHZ_OWNER:-${_Z_OWNER}}:$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}}) "$datafile"
       fi
-      command mv -f "$tempfile" "$datafile" 2> /dev/null \
-        || command rm -f "$tempfile"
+      command rm -f "$tempfile"
+
+    else
+
+      # Avoid clobbering the datafile in a race condition
+      if (( ret != 0 )) && [[ -f $datafile ]]; then
+        command rm -f "$tempfile"
+      else
+        if [[ -n ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
+          chown "${ZSHZ_OWNER:-${_Z_OWNER}}":"$(id -ng "${ZSHZ_OWNER:-${_Z_OWNER}}")" "$tempfile"
+        fi
+        command mv -f "$tempfile" "$datafile" 2> /dev/null \
+          || command rm -f "$tempfile"
+      fi
+
     fi
 
   elif [[ ${ZSHZ_COMPLETION:-frecent} == 'legacy' ]] && [[ $1 == '--complete' ]] \
