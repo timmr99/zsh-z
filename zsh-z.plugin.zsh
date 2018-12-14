@@ -317,7 +317,11 @@ zshz() {
       local lockfd
 
       # Grab exclusive lock (released when function exits)
-      zsystem flock -f lockfd "$datafile" || return
+      if (( ZSHZ_DEBUG )); then
+        zsystem flock -f lockfd "$datafile" || return
+      else
+        zsystem flock -f lockfd "$datafile" &> /dev/null || return
+      fi
 
       if [[ ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
         chown ${ZSHZ_OWNER:-${_Z_OWNER}}:"$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}})" "$datafile"
@@ -392,7 +396,11 @@ zshz() {
                     local lockfd
 
                   # Grab exclusive lock (released when function exits)
-                  zsystem flock -f lockfd "$datafile" || return
+                  if (( ZSHZ_DEBUG )); then
+                    zsystem flock -f lockfd "$datafile" || return
+                  else
+                    zsystem flock -f lockfd "$datafile" &> /dev/null || return
+                  fi
 
                   command mv -f =(print -l -- $lines) "$datafile"
                 else
