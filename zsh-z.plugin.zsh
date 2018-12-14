@@ -319,9 +319,31 @@ zshz() {
       # Grab exclusive lock (released when function exits)
       zsystem flock -f lockfd "$datafile" || return
 
+      if [[ ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
+        chown ${ZSHZ_OWNER:-${_Z_OWNER}}:"$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}})" "$datafile"
+      fi
+
+      command mv =(_zshz_maintain_datafile "$*") "$datafile"
+
+    else
+      # A temporary file that gets copied over the datafile if all goes well
+      local tempfile="${datafile}.${RANDOM}"
+
+      _zshz_maintain_datafile "$*" >| "$tempfile"
+      local ret=$?
+
+      # Avoid clobbering the datafile in a race condition
+      if (( ret != 0 )) && [[ -f $datafile ]]; then
+        command rm -f "$tempfile"
+      else
+        if [[ -n ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
+          chown "${ZSHZ_OWNER:-${_Z_OWNER}}":"$(id -ng "${ZSHZ_OWNER:-${_Z_OWNER}}")" "$tempfile"
+        fi
+        command mv -f "$tempfile" "$datafile" 2> /dev/null \
+          || command rm -f "$tempfile"
+      fi
     fi
 
-    command mv =(_zshz_maintain_datafile "$*") "$datafile"
 
   elif [[ ${ZSHZ_COMPLETION:-frecent} == 'legacy' ]] && [[ $1 == '--complete' ]] \
     && [[ -s $datafile ]]; then
@@ -363,7 +385,24 @@ zshz() {
                 # All of the lines that don't match the directory to be deleted
                 lines=( ${(M)lines:#^${PWD}\|*} )
 
-                command mv -f =(print -l -- $lines) "$datafile"
+                if (( ZSHZ_USE_ZSYSTEM_FLOCK )); then
+
+                  # Make sure that the datafile exists for locking
+                  [[ -f $datafile ]] || touch "$datafile"
+                    local lockfd
+
+                  # Grab exclusive lock (released when function exits)
+                  zsystem flock -f lockfd "$datafile" || return
+
+                  command mv -f =(print -l -- $lines) "$datafile"
+                else
+                  local tempfile="${datafile}.${RANDOM}"
+
+                  print -l -- $lines > "$tempfile"
+
+                  command mv -f "$tempfile" "$datafile" \
+                    || command rm -f "$tempfile"
+                fi
 
                 # In order to make z -x work, we have to disable zsh-z's adding
                 # to the database until the user changes directory and the
