@@ -346,7 +346,7 @@ zshz() {
 
     if (( ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
-      # Make sure tht the datafile exists for locking
+      # Make sure that the datafile exists for locking
       [[ -f $datafile ]] || touch "$datafile"
       local lockfd
 
