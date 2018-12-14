@@ -330,11 +330,12 @@ zshz() {
         chown ${ZSHZ_OWNER:-${_Z_OWNER}}:"$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}})" "$datafile"
       fi
 
-      command cat =(_zshz_maintain_datafile "$*") >| "$tempfile"
-      (( $? == 0 )) && command cat "$tempfile" >| $datafile || return
+      # Using =() seems to be important to avoiding a race condition
+      print -l -- ${(f)"$(< =(_zshz_maintain_datafile "$*"))"} >| "$tempfile"
+      (( $? == 0 )) && print -l ${(f)"$(< "$tempfile")"} >| $datafile || return
+      # (( $? == 0 )) && command cat "$tempfile" >| $datafile || return
 
     else
-
 
       _zshz_maintain_datafile "$*" >| "$tempfile"
       local ret=$?
