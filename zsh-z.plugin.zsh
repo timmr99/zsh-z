@@ -320,14 +320,14 @@ zshz() {
       if (( ZSHZ_DEBUG )); then
         zsystem flock -f lockfd "$datafile" || return
       else
-        zsystem flock -f lockfd "$datafile" &> /dev/null || return
+        zsystem flock -f lockfd "$datafile" 2> /dev/null || return
       fi
 
       if [[ ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
         chown ${ZSHZ_OWNER:-${_Z_OWNER}}:"$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}})" "$datafile"
       fi
 
-      command mv =(_zshz_maintain_datafile "$*") "$datafile"
+      command mv =(_zshz_maintain_datafile "$*") "$datafile" 2> /dev/null
 
     else
       # A temporary file that gets copied over the datafile if all goes well
@@ -399,17 +399,17 @@ zshz() {
                   if (( ZSHZ_DEBUG )); then
                     zsystem flock -f lockfd "$datafile" || return
                   else
-                    zsystem flock -f lockfd "$datafile" &> /dev/null || return
+                    zsystem flock -f lockfd "$datafile" 2> /dev/null || return
                   fi
 
-                  command mv -f =(print -l -- $lines) "$datafile"
+                  command mv -f =(print -l -- $lines) "$datafile" 2> /dev/null
                 else
                   local tempfile="${datafile}.${RANDOM}"
 
                   print -l -- $lines > "$tempfile"
 
                   command mv -f "$tempfile" "$datafile" \
-                    || command rm -f "$tempfile"
+                    || command rm -f "$tempfile" 2> /dev/null
                 fi
 
                 # In order to make z -x work, we have to disable zsh-z's adding
