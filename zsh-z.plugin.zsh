@@ -310,6 +310,9 @@ zshz() {
 
     # zsystem flock-based solution by @mafredri
 
+    # A temporary file that gets copied over the datafile if all goes well
+    local tempfile="${datafile}.${RANDOM}"
+
     if (( ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
       # Make sure that the datafile exists for locking
@@ -327,11 +330,11 @@ zshz() {
         chown ${ZSHZ_OWNER:-${_Z_OWNER}}:"$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}})" "$datafile"
       fi
 
-      command mv =(_zshz_maintain_datafile "$*") "$datafile" 2> /dev/null
+      command cat =(_zshz_maintain_datafile "$*") >| "$tempfile"
+      (( $? == 0 )) && command cat "$tempfile" >| $datafile || return
 
     else
-      # A temporary file that gets copied over the datafile if all goes well
-      local tempfile="${datafile}.${RANDOM}"
+
 
       _zshz_maintain_datafile "$*" >| "$tempfile"
       local ret=$?
