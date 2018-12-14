@@ -79,6 +79,14 @@ With no ARGUMENT, list the directory history in ascending rank.
 # of ZSH
 (( $+EPOCHSECONDS )) || zmodload zsh/datetime
 
+# Load zsh/system, if necessary
+whence -w zsystem &> /dev/null || zmodload zsh/system &> /dev/null
+
+# Determine whether zsystem flock is available
+if zsystem supports flock &> /dev/null; then
+  typeset -g ZSHZ_USE_ZSYSTEM_FLOCK=1
+fi
+
 ########################################################
 # Maintain the datafile
 #
@@ -133,12 +141,12 @@ _zshz_maintain_datafile() {
     for x in ${(k)rank}; do
       # When a rank drops below 1, drop the path from the database
       if (( (( 0.99 * rank[$x] )) >= 1 )); then
-        print "$x|$(( 0.99 * rank[$x] ))|${time[$x]}"
+        print -- "$x|$(( 0.99 * rank[$x] ))|${time[$x]}"
       fi
     done
   else
     for x in ${(k)rank}; do
-      print "$x|${rank[$x]}|${time[$x]}"
+      print -- "$x|${rank[$x]}|${time[$x]}"
     done
   fi
 }
@@ -167,42 +175,13 @@ _zshz_legacy_complete() {
     if (( imatch )); then
       # shellcheck disable=SC2086,SC2154
       if [[ ${path_field:l} == *${~1}* ]]; then
-        print $path_field
+        print -- $path_field
       fi
     elif [[ $path_field == *${~1}* ]]; then
-      print $path_field
+      print -- $path_field
     fi
   done < "$datafile"
 }
-
-############################################################
-# Remove a directory from the datafile
-#
-# Arguments:
-#   $1 Directory to be removed
-############################################################
-_zshz_remove_directory () {
-  local directory=$1
-  local -a lines
-  local datafile=${ZSHZ_DATA:-${_Z_DATA:-${HOME}/.z}}
-  local tempfile="${datafile}.${RANDOM}"
-
-  lines=( "${(@f)"$(<$datafile)"}" )
-
-  # All of the lines that don't match the directory to be deleted
-  lines=( ${(M)lines:#^${directory}\|*} )
-
-  print -l $lines > "$tempfile"
-
-  command mv -f "$tempfile" "$datafile" \
-    || command rm -f "$tempfile"
-
-  # In order to make z -x work, we have to disable zsh-z's adding
-  # to the database until the user changes directory and the
-  # chpwd_functions are run
-  typeset -g ZSHZ_REMOVED=1
-}
-
 
 ########################################################
 # Find the common root of a list of matches, if it
@@ -232,7 +211,7 @@ _zshz_common() {
     (( ${common_matches[$x]} )) && [[ $x != $short* ]] && return
   done
 
-  print -z $short
+  print -z -- $short
 }
 
 ########################################################
@@ -267,6 +246,7 @@ _zshz_output() {
     descending_list=( ${${(@On)descending_list}#*\|} )
     print -l $descending_list
   elif (( list )); then
+    # shellcheck disable=SC2154
     for x in ${(k)output_matches}; do
       if (( ${output_matches[$x]} )); then
         print -z -f "%-10.2f %s\n" ${output_matches[$x]} $x
@@ -287,7 +267,7 @@ _zshz_output() {
       print -z $common
     else
       # shellcheck disable=SC2154
-      print -z ${(P)match}
+      print -z -- ${(P)match}
     fi
   fi
 }
@@ -328,21 +308,20 @@ zshz() {
       esac
     done
 
-    # A temporary file that gets copied over the datafile if all goes well
-    local tempfile="$datafile.$RANDOM"
+    # zsystem flock-based solution by @mafredri
 
-    _zshz_maintain_datafile "$*" >| "$tempfile"
+    if (( ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
-    # Avoid clobbering the datafile in a race condition
-    if (( $? != 0 )) && [[ -f $datafile ]]; then
-      command rm -f "$tempfile"
-    else
-      if [[ -n ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
-        chown "${ZSHZ_OWNER:-${_Z_OWNER}}":"$(id -ng "${ZSHZ_OWNER:-${_Z_OWNER}}")" "$tempfile"
-      fi
-      command mv -f "$tempfile" "$datafile" 2> /dev/null \
-        || command rm -f "$tempfile"
+      # Make sure that the datafile exists for locking
+      [[ -f $datafile ]] || touch "$datafile"
+      local lockfd
+
+      # Grab exclusive lock (released when function exits)
+      zsystem flock -f lockfd "$datafile" || return
+
     fi
+
+    command mv =(_zshz_maintain_datafile "$*") "$datafile"
 
   elif [[ ${ZSHZ_COMPLETION:-frecent} == 'legacy' ]] && [[ $1 == '--complete' ]] \
     && [[ -s $datafile ]]; then
@@ -375,7 +354,21 @@ zshz() {
               r) typ='rank' ;;
               t) typ='recent' ;;
               x)
-                _zshz_remove_directory $PWD
+                # TODO: Take $ZSHZ_OWNER into account?
+
+                local -a lines
+
+                lines=( "${(@f)"$(<$datafile)"}" )
+
+                # All of the lines that don't match the directory to be deleted
+                lines=( ${(M)lines:#^${PWD}\|*} )
+
+                command mv -f =(print -l -- $lines) "$datafile"
+
+                # In order to make z -x work, we have to disable zsh-z's adding
+                # to the database until the user changes directory and the
+                # chpwd_functions are run
+                typeset -g ZSHZ_REMOVED=1
 
                 # TODO: Something more intelligent that just returning 0
                 return 0
@@ -470,7 +463,7 @@ zshz() {
 
     if (( success == 0 )) && [[ -n $cd ]]; then
       if (( echo )); then
-        print "$cd"
+        print -- "$cd"
       else
         # shellcheck disable=SC2164
         builtin cd "$cd"
@@ -493,10 +486,16 @@ alias ${ZSHZ_CMD:-${_Z_CMD:-z}}='zshz 2>&1'
 
 if [[ -n ${ZSHZ_NO_RESOLVE_SYMLINKS:-${_Z_NO_RESOLVE_SYMLINKS}} ]]; then
   _zshz_precmd() {
+    # Seed $RANDOM by referencing it
+    : $RANDOM
+
     (( ! ZSHZ_REMOVED )) && (zshz --add "${PWD:a}" &)
   }
 else
   _zshz_precmd() {
+    # Seed $RANDOM by referencing it
+    : $RANDOM
+
     (( ! ZSHZ_REMOVED )) && (zshz --add "${PWD:A}" &)
   }
 fi
