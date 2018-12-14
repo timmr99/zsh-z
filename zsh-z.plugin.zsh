@@ -188,6 +188,8 @@ _zshz_legacy_complete() {
 #
 # Arguments:
 #   $1 Directory to be removed
+#
+# TODO: Take $ZSHZ_OWNER into account?
 ############################################################
 _zshz_remove_directory () {
   local directory=$1
@@ -275,6 +277,7 @@ _zshz_output() {
     descending_list=( ${${(@On)descending_list}#*\|} )
     print -l $descending_list
   elif (( list )); then
+    # shellcheck disable=SC2154
     for x in ${(k)output_matches}; do
       if (( ${output_matches[$x]} )); then
         print -z -f "%-10.2f %s\n" ${output_matches[$x]} $x
@@ -341,7 +344,7 @@ zshz() {
     # A temporary file that gets copied over the datafile if all goes well
     local tempfile="$(mktemp "${datafile}.XXXXXXXX")"
 
-    if (( $ZSHZ_USE_ZSYSTEM_FLOCK )); then
+    if (( ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
       # Make sure tht the datafile exists for locking
       [[ -f $datafile ]] || touch "$datafile"
@@ -356,12 +359,12 @@ zshz() {
 
     local ret=$?
 
-    if (( $ZSHZ_USE_ZSYSTEM_FLOCK )); then
+    if (( ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
       # Replace contents of datafile with tempfile
       command cat "$tempfile" >| "$datafile"
       if [[ ${ZSHZ_OWNER:-${_Z_OWNER}} ]]; then
-        chown ${ZSHZ_OWNER:-${_Z_OWNER}}:$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}}) "$datafile"
+        chown ${ZSHZ_OWNER:-${_Z_OWNER}}:"$(id -ng ${ZSHZ_OWNER:_${_Z_OWNER}})" "$datafile"
       fi
       command rm -f "$tempfile"
 
