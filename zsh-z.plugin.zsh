@@ -85,7 +85,7 @@ With no ARGUMENT, list the directory history in ascending rank.
 # Reads the old datafile contents from STDIN, adds the
 # current path to them, alters the contents to "age"
 # them, and prints the new contents of the datafile to
-# STDOUT.
+# the editor stack buffer.
 #
 # Arguments:
 #   $1 Path to be added to datafile
@@ -133,12 +133,12 @@ _zshz_maintain_datafile() {
     for x in ${(k)rank}; do
       # When a rank drops below 1, drop the path from the database
       if (( (( 0.99 * rank[$x] )) >= 1 )); then
-        print "$x|$(( 0.99 * rank[$x] ))|${time[$x]}"
+        print -z "$x|$(( 0.99 * rank[$x] ))|${time[$x]}"
       fi
     done
   else
     for x in ${(k)rank}; do
-      print "$x|${rank[$x]}|${time[$x]}"
+      print -z "$x|${rank[$x]}|${time[$x]}"
     done
   fi
 }
@@ -331,7 +331,13 @@ zshz() {
     # A temporary file that gets copied over the datafile if all goes well
     local tempfile="$datafile.$RANDOM"
 
-    _zshz_maintain_datafile "$*" >| "$tempfile"
+    _zshz_maintain_datafile "$*"
+
+    # Make sure buffer isn't empty before printing to file
+    local buffer
+    read -z buffer
+    [[ $buffer == '' ]] && return 1
+    print -- $buffer >| "$tempfile"
 
     # Avoid clobbering the datafile in a race condition
     if (( $? != 0 )) && [[ -f $datafile ]]; then
