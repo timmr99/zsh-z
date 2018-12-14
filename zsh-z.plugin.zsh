@@ -311,7 +311,7 @@ zshz() {
     # zsystem flock-based solution by @mafredri
 
     # A temporary file that gets copied over the datafile if all goes well
-    local tempfile="$(mktemp "${datafile}.XXXXXXXX")"
+    local tempfile="${datafile}.${RANDOM}"
 
     if (( ZSHZ_USE_ZSYSTEM_FLOCK )); then
 
