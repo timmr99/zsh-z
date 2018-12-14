@@ -521,10 +521,16 @@ alias ${ZSHZ_CMD:-${_Z_CMD:-z}}='zshz 2>&1'
 
 if [[ -n ${ZSHZ_NO_RESOLVE_SYMLINKS:-${_Z_NO_RESOLVE_SYMLINKS}} ]]; then
   _zshz_precmd() {
+    # Seed $RANDOM by referencing it
+    : $RANDOM
+
     (( ! ZSHZ_REMOVED )) && (zshz --add "${PWD:a}" &)
   }
 else
   _zshz_precmd() {
+    # Seed $RANDOM by referencing it
+    : $RANDOM
+
     (( ! ZSHZ_REMOVED )) && (zshz --add "${PWD:A}" &)
   }
 fi
